@@ -38,8 +38,9 @@ def test_saga(client):
     assert order_id > 0
     logger.debug(f"Created order with ID: {order_id}")
 
-    # Wait for 3s to give step 1 enough time to run
-    time.sleep(3)
+    # Wait for saga processing (OrderCreated -> StockDecreased -> PaymentCreated -> SagaCompleted)
+    # Allow 8 seconds to ensure all async Kafka events are processed and DB/Redis are updated
+    time.sleep(8)
     
     # 2. Check if order really exists and whether it has a payment link
     response = client.get(f'/orders/{order_id}')

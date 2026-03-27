@@ -10,25 +10,17 @@ from orders.commands.order_event_producer import OrderEventProducer
 
 
 class StockDecreaseFailedHandler(EventHandler):
-    """Handles StockDecreaseFailed events"""
+    """No stock available - cancel the order immediately"""
     
     def __init__(self):
         self.order_producer = OrderEventProducer()
         super().__init__()
     
     def get_event_type(self) -> str:
-        """Get event type name"""
         return "StockDecreaseFailed"
     
     def handle(self, event_data: Dict[str, Any]) -> None:
-        """Execute every time the event is published"""
-        # TODO: Consultez le diagramme de machine à états pour savoir quelle opération effectuer dans cette méthode. 
-
-        try:
-            # Si l'operation a réussi, déclenchez OrderCancelled.
-            event_data['event'] = "OrderCancelled"
-            OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
-        except Exception as e:
-            # TODO: Si l'operation a échoué, continuez la compensation des étapes précedentes.
-            event_data['error'] = str(e)
+        # Stock unavailable - no compensation needed, just cancel
+        event_data['event'] = "OrderCancelled"
+        self.order_producer.get_instance().send(config.KAFKA_TOPIC, value=event_data)
   

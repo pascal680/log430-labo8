@@ -54,8 +54,7 @@ class OutboxProcessor():
                 order = session.query(Outbox).filter(Outbox.order_id == outbox_item.order_id).first()
                 order.payment_id = data['payment_id']
                 session.commit()
-                # TODO: après la mise à jour à MySQL, il faut également mettre la commande à jour dans Redis
-                # Vous pouvez réutiliser le code présent dans OrderController, lignes 40-43
+                # Update MySQL and Redis with the payment info
                 update_succeeded = modify_order(event_data["order_id"], True, order.payment_id)
                 event_data["payment_link"] = f"http://api-gateway:8080/payments-api/payments/process/{order.payment_id}"
                 if not update_succeeded:
@@ -73,17 +72,15 @@ class OutboxProcessor():
             OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
 
     def _request_payment_transaction(self, outbox_item):
-        """Request payment transaction to Payments API"""
+        # Call Payments API through the gateway
         order_data = {
             "user_id": outbox_item.user_id,
             "order_id": outbox_item.order_id,
             "total_amount": outbox_item.total_amount
         }
-        payment_response = requests.post('http://api-gateway:8080/payments-api/payments',
+        return requests.post('http://api-gateway:8080/payments-api/payments',
             json=order_data,
-            headers={'Content-Type': 'application/json'}
-        )
-        return payment_response
+            headers={'Content-Type': 'application/json'})
       
     def _get_event_data(self, outbox_item):
         return {

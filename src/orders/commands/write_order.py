@@ -20,6 +20,7 @@ logger = Logger.get_instance("add_order")
 def add_order(user_id: int, items: list):
     """Insert order with items in MySQL, keep Redis in sync"""
     event_data = {'event': 'OrderCreationFailed'} 
+    session = None
     try:
         if not items:
             raise ValueError("Cannot create order. An order must have 1 or more items.")
@@ -86,11 +87,13 @@ def add_order(user_id: int, items: list):
     except Exception as e:
         # Déclencher l'événement OrderCreationFailed
         event_data['error'] = str(e)
-        session.rollback()
+        if session is not None:
+            session.rollback()
         raise e
     finally:
         OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
-        session.close()
+        if session is not None:
+            session.close()
 
 def modify_order(order_id: int, is_paid: bool, payment_id: int):
     session = get_sqlalchemy_session()
@@ -105,6 +108,17 @@ def modify_order(order_id: int, is_paid: bool, payment_id: int):
 
         session.commit()
         session.refresh(order)
+        
+        # Update Redis as well (Outbox pattern requires syncing Redis with MySQL)
+        r = get_redis_conn()
+        order_data = r.hgetall(f"order:{order_id}")
+        if order_data:  # Order exists in Redis
+            if is_paid is not None:
+                order_data[b'is_paid'] = str(is_paid).encode('utf-8')
+            if payment_id is not None:
+                order_data[b'payment_link'] = f"http://api-gateway:8080/payments-api/payments/process/{payment_id}".encode('utf-8')
+            r.hset(f"order:{order_id}", mapping=order_data)
+        
         return True
     except SQLAlchemyError as e:
         session.rollback()
